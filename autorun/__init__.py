@@ -6,6 +6,8 @@ import subprocess
 import logging
 import pathlib
 import json
+import hashlib
+import hmac
 import urllib.request
 
 from .github_models import Ping, PullRequest, GithubJobs, WorkflowJob
@@ -32,15 +34,39 @@ log_stdout.setFormatter(
 
 log.addHandler(log_stdout)
 
+if config.github.secret is None:
+	log.warning(f"No secret has been configured, anyone can post to your webhook!")
+
+def verify_signature(payload :bytes, signature :str):
+	"""
+	Used to validate webhook deliveries:
+	 * https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries
+	"""
+	hash_object = hmac.new(config.github.secret.encode('utf-8'), msg=payload, digestmod=hashlib.sha256)
+	expected_signature = "sha256=" + hash_object.hexdigest()
+
+	if hmac.compare_digest(expected_signature, signature):
+		return True
+
+	return False
+
 @app.post('/github/')
 async def webhook_entry(payload :Ping|PullRequest|WorkflowJob, request :fastapi.Request, response :fastapi.Response):
+	# We validate the webhook secret, only if we configured one
+	if config.github.secret and verify_signature(await request.body(), request.headers.get('X-Hub-Signature-256')) is not True:
+		log.warning(f"Invalid webhook signature, ignoring request (make sure your secret match on the webhook and in TOML config)")
+
+		return fastapi.Response(
+			status_code=fastapi.status.HTTP_403_FORBIDDEN
+		)
+
+	# Ignore by accepting all non-PR payloads
 	if not isinstance(payload, PullRequest):
-		# Ignore (accept) all non-PR payloads
 		return fastapi.Response(
 			status_code=202
 		)
 
-	# Ignore PR hooks that are not:
+	# Ignore by accepting PR hooks that are not:
 	if payload.action not in ('opened', 'synchronize', 'reopened'):
 		return fastapi.Response(
 			status_code=202

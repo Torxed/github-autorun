@@ -1,7 +1,10 @@
 [github]
 access_token = "github_pat_abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghij"
 repository = "Torxed/github-autorun"
-secret = "not-in-use-yet"
+# Secret is optional, but strongly recommended
+# to avoid anyone being able to post to your webhook.
+#
+#secret = "some-webhook-secret-you-created"
 
 [api]
 fullchain = "./fullchain.pem"

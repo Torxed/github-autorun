@@ -68,6 +68,8 @@ class GithubConfig(pydantic.BaseModel):
 				if repo_info.get('full_name', None) != self.repository:
 					raise PermissionError(f"Could not fetch configured repository info: {self.repository}")
 
+		return self
+
 class ApiConfig(pydantic.BaseModel):
 	"""
 	Controls the hypercorn stuff
