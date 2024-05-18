@@ -1,166 +1,110 @@
-import enum
-import pydantic
 import fastapi
-import typing
-import datetime
-# from fastapi import Request, Response, HTTPException, status
+import os
+import sys
+import tempfile
+import subprocess
+import logging
+import pathlib
+import json
+import urllib.request
+
+from .github_models import Ping, PullRequest, GithubJobs, WorkflowJob
 
 app = fastapi.FastAPI()
+github_access_token = "<insert github token>"
 
-class Types(enum.Enum):
-	Repository :"Repository"
-
-class ContentTypes(enum.Enum):
-	json :"json"
-
-class Visibility(enum.Enum):
-	public :"public"
-	private :"private"
-
-class WebhookConfig(pydantic.BaseModel):
-	content_type :str # ContentTypes
-	insecure_ssl :int
-	url :str
-
-class LastResponse(pydantic.BaseModel):
-	status :str
-	code :int|None = None
-	message :str|None = None
-
-class Hook(pydantic.BaseModel):
-	type :str #Types
-	id :int
-	name :str
-	events :typing.List[str]
-	config :WebhookConfig
-	updated_at :datetime.datetime
-	created_at :datetime.datetime
-	url :str
-	test_url :str
-	ping_url :str
-	deliveries_url :str
-	last_response :LastResponse
-
-class UserInfo(pydantic.BaseModel):
-	login :str
-	id :int
-	node_id :str
-	avatar_url :str
-	gravatar_id :str
-	url :str
-	html_url :str
-	followers_url :str
-	following_url :str
-	gists_url :str
-	starred_url :str
-	subscriptions_url :str
-	organizations_url :str
-	repos_url :str
-	events_url :str
-	received_events_url :str
-	type :str
-	site_admin :bool
-
-class Repository(pydantic.BaseModel):
-	id :int
-	node_id :str
-	name :str
-	full_name :str
-	private :bool
-	owner :UserInfo
-	html_url :str
-	description :str
-	fork :bool
-	url :str
-	forks_url :str
-	keys_url :str
-	collaborators_url :str
-	teams_url :str
-	hooks_url :str
-	issue_events_url :str
-	events_url :str
-	assignees_url :str
-	branches_url :str
-	tags_url :str
-	blobs_url :str
-	git_tags_url :str
-	git_refs_url :str
-	trees_url :str
-	statuses_url :str
-	languages_url :str
-	stargazers_url :str
-	contributors_url :str
-	subscribers_url :str
-	subscription_url :str
-	commits_url :str
-	git_commits_url :str
-	comments_url :str
-	issue_comment_url :str
-	contents_url :str
-	compare_url :str
-	merges_url :str
-	archive_url :str
-	downloads_url :str
-	issues_url :str
-	pulls_url :str
-	milestones_url :str
-	notifications_url :str
-	labels_url :str
-	releases_url :str
-	deployments_url :str
-	created_at :str
-	updated_at :str
-	pushed_at :str
-	git_url :str
-	ssh_url :str
-	clone_url :str
-	svn_url :str
-	homepage :str
-	size :int
-	stargazers_count :int
-	watchers_count :int
-	language :str
-	has_issues :bool
-	has_projects :bool
-	has_downloads :bool
-	has_wiki :bool
-	has_pages :bool
-	has_discussions :bool
-	forks_count :int
-	archived :bool
-	disabled :bool
-	open_issues_count :int
-	license :dict # .. todo:: make a useful struct
-	# "license": {
-	# 	"key": "gpl-3.0",
-	# 	"name": "GNU General Public License v3.0",
-	# 	"spdx_id": "GPL-3.0",
-	# 	"url": "https://api.github.com/licenses/gpl-3.0",
-	# 	"node_id": "MDc6TGljZW5zZTk="
-	# },
-	allow_forking :bool
-	is_template :bool
-	web_commit_signoff_required :bool
-	topics :list # No idea what's in here
-	visibility :str
-	forks :int
-	open_issues :int
-	watchers :int
-	default_branch :str
-	
-
-
-	mirror_url :str|None = None
-
-class Greeting(pydantic.BaseModel):
-	hook_id :int
-	hook :Hook
-	zen :str|None = None
-	repository :Repository
-	sender :UserInfo
+log = logging.getLogger()
+log.setLevel(logging.DEBUG)
+handler = logging.StreamHandler(sys.stdout)
+handler.setLevel(logging.DEBUG)
+handler.setFormatter(logging.Formatter('{"human_time": "%(asctime)s", "logger_name": "%(name)s", "level": "%(levelname)s", "message": "%(message)s"}'))
+log.addHandler(handler)
 
 @app.post('/github/')
-async def webhook_landing(payload :Greeting, request :fastapi.Request, response :fastapi.Response):
+async def webhook_landing(payload :Ping|PullRequest|WorkflowJob, request :fastapi.Request, response :fastapi.Response):
+	if not isinstance(payload, PullRequest):
+		# Ignore non-PR payloads
+		return fastapi.Response(
+			status_code=202
+		)
+
+	if payload.action not in ('opened', 'synchronize', 'reopened'):
+		# Ignore anything other than PR actions opened and modified (sync) or re-opened
+		return fastapi.Response(
+			status_code=202
+		)
+
+
+	# payload.head < Submittee
+	# payload.base < Origin
+
+	with tempfile.TemporaryDirectory() as tempdir:
+		log.info(f"git clone {payload.pull_request.base.repo.html_url}@{payload.pull_request.base.ref}")
+		subprocess.run(f"git clone -q {payload.pull_request.base.repo.html_url} --branch {payload.pull_request.base.ref} --single-branch {tempdir}/{payload.pull_request.base.repo.name}", capture_output=True, shell=True, cwd=tempdir)
+		log.info(f"git remote add \\\"pr\\\" {payload.pull_request.head.repo.full_name}@{payload.pull_request.head.ref}")
+		subprocess.run(f"git remote add pr {payload.pull_request.head.repo.html_url}", capture_output=True, shell=True, cwd=f"{tempdir}/{payload.pull_request.base.repo.name}")
+		log.info(f"git remote update {payload.pull_request.base.repo.full_name}@{payload.pull_request.base.ref} and {payload.pull_request.head.repo.full_name}@{payload.pull_request.head.ref}")
+		subprocess.run(f"git remote update", capture_output=True, shell=True, cwd=f"{tempdir}/{payload.pull_request.base.repo.name}")
+
+		log.info(f"Checking file differences")
+		file_changes = subprocess.run(f"git diff --name-only {payload.pull_request.base.ref} pr/{payload.pull_request.head.ref}", capture_output=True, shell=True, cwd=f"{tempdir}/{payload.pull_request.base.repo.name}").stdout.decode().strip().split('\n')
+
+		for filename in file_changes:
+			if filename == '': continue
+
+			try:
+				pathlib.Path(filename).relative_to(pathlib.Path('.github/workflows'))
+				# Not allowed to modify .github/workflow/* files
+				return fastapi.Response(
+					status_code=fastapi.status.HTTP_403_FORBIDDEN
+				)
+			except ValueError:
+				# This is good, it means the filename was not a relative path of .github/workflows/
+				continue
+
+
+		log.info(f"Changes does not include a GitHub runner change, proceeding to approve all runners: {json.dumps(file_changes).replace('"', '\\"')}")
+		
+		headers = {
+			"Accept": "application/vnd.github+json",
+			"Authorization": f"Bearer {github_access_token}",
+			"X-GitHub-Api-Version": "2022-11-28"
+		}
+		request = urllib.request.Request(
+			f'https://api.github.com/repos/{payload.pull_request.base.repo.full_name}/actions/runs?event=pull_request&status=action_required&head_sha={payload.pull_request.head.sha}',
+			method="GET",
+			headers=headers,
+			# data=data
+		)
+
+		jobs_to_start = {}
+		with urllib.request.urlopen(request) as response:
+			info = response.info()
+			if info.get_content_subtype() == 'json':
+				jobs = GithubJobs(**json.loads(response.read().decode(info.get_content_charset('utf-8'))))
+				for job in jobs.workflow_runs:
+					if job.head_commit.id != payload.pull_request.head.sha:
+						log.warning(f"Job {job.head_commit.id} does not match pull requests {payload.pull_request.head.sha}")
+						# Something's fishy, and we're out of chips!
+						return fastapi.Response(
+							status_code=fastapi.status.HTTP_403_FORBIDDEN
+						)
+
+					log.info(f"Quing '{job.name}' for start")
+					jobs_to_start[job.id] = job
+
+		for id_number, job in jobs_to_start.items():
+			request = urllib.request.Request(
+				f'https://api.github.com/repos/{payload.pull_request.base.repo.full_name}/actions/runs/{id_number}/approve',
+				method="POST",
+				headers=headers,
+				# data=data
+			)
+			with urllib.request.urlopen(request) as response:
+				info = response.info()
+				log.info(f"Started '{job.name}' for start")
+
+	# If everything went according to plan, we return 202 Accepted
 	return fastapi.Response(
 		status_code=202
 	)
