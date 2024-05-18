@@ -7,7 +7,8 @@ repository = "Torxed/github-autorun"
 #secret = "some-webhook-secret-you-created"
 
 [api]
-fullchain = "./fullchain.pem"
-privkey = "./privkey.pem"
+fullchain = "/etc/github-autorun/fullchain.pem"
+privkey = "/etc/github-autorun/privkey.pem"
 address = "127.0.0.1"
 port = 1337
+log_level = "INFO"
