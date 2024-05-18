@@ -3,6 +3,17 @@ import pydantic
 import typing
 import datetime
 
+"""
+The three main models:
+ * Ping
+ * PullRequest
+ * WorkflowJob
+
+Those are the entry points used by FastAPI.
+The rest are just fillers to accomodate the data sent by:
+ * https://github.com/<owner>/<repo>/settings/hooks/
+"""
+
 class Types(enum.Enum):
 	Repository :"Repository"
 

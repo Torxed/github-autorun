@@ -1,0 +1,9 @@
+[github]
+access_token = "github_pat_abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghij"
+repository = "Torxed/github-autorun"
+
+[api]
+fullchain = "./fullchain.pem"
+privkey = "./privkey.pem"
+address = "127.0.0.1"
+port = 1337
