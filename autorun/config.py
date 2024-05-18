@@ -27,6 +27,7 @@ class GithubConfig(pydantic.BaseModel):
 
 	access_token :str = os.environ.get('GITHUB_API_TOKEN', None)
 	repository :str = os.environ.get('GITHUB_REPO', 'Torxed/github-autorun')
+	secret :str|None = os.environ.get('GITHUB_SECRET', None)
 
 	@pydantic.field_validator("repository", mode='before')
 	def validate_repo(cls, value):
