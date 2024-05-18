@@ -1,5 +1,6 @@
 # github-autorun
-Approves runners automatically based on conditions and checks
+
+Approves runners automatically in PR's if `.github/workflows` are untouched.
 
 # Install & Run
 
