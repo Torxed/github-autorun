@@ -1,0 +1,19 @@
+services:
+    github-autorun:
+        build:
+            context: .
+            dockerfile: ./DockerFiles/Dockerfile_autorun
+        ports:
+            - "1337:1337" # The port configured in github-autorun.toml
+        restart: unless-stopped
+        volumes:
+            - "/etc/localtime:/etc/localtime:ro"
+            - "./fullchain.pem:/etc/github-autorun/fullchain.pem:ro"
+            - "./privkey.pem:/etc/github-autorun/privkey.pem:ro"
+            - "./github-autorun.toml:/etc/github-autorun/github-autorun.toml:ro"
+        healthcheck:
+            test: ["CMD-SHELL", "curl --silent -o /dev/null --max-time 4 --insecure https://127.0.0.1:1337/healthcheck"]
+            interval: 5s
+            timeout: 5s
+            retries: 3
+            start_period: 5s

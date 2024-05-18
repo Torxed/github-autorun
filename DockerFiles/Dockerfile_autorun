@@ -1,0 +1,27 @@
+# syntax = docker/dockerfile:1.4
+
+FROM archlinux/archlinux:latest
+
+RUN pacman -Sy
+RUN pacman -S --noconfirm python python-build python-installer python-pydantic python-fastapi hypercorn
+
+RUN mkdir /app
+COPY ./autorun /app/autorun/
+COPY ./pyproject.toml /app/pyproject.toml
+
+WORKDIR /app/
+RUN python -m build .
+RUN python -m installer dist/*.whl
+
+# Cleanup the container a bit
+RUN rm -rf /app/*
+RUN pacman -Rs --noconfirm python-build python-installer
+
+RUN mkdir -p /etc/github-autorun
+RUN useradd -m -G http -s /bin/nologin autorun
+
+RUN chown autorun: /etc/github-autorun
+
+USER autorun
+WORKDIR /etc/github-autorun
+ENTRYPOINT /usr/bin/github-autorun

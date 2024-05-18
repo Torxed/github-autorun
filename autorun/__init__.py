@@ -6,12 +6,18 @@ import subprocess
 import logging
 import pathlib
 import json
+import asyncio
 import hashlib
 import hmac
 import urllib.request
+from hypercorn.config import Config
+from hypercorn.asyncio import serve
 
 from .github_models import Ping, PullRequest, GithubJobs, WorkflowJob
 from .config import config
+from .hypercorn_logger import Logger
+
+__version__ = "0.0.1"
 
 app = fastapi.FastAPI()
 
@@ -20,9 +26,9 @@ app = fastapi.FastAPI()
 #    But we do want the format to be machine parse:able.
 
 log = logging.getLogger()
-log.setLevel(logging.DEBUG)
+log.setLevel(config.api.log_level)
 log_stdout = logging.StreamHandler(sys.stdout)
-log_stdout.setLevel(logging.DEBUG)
+log_stdout.setLevel(config.api.log_level)
 log_stdout.setFormatter(
 	logging.Formatter(json.dumps({
 		"human_time" : "%(asctime)s",
@@ -36,6 +42,32 @@ log.addHandler(log_stdout)
 
 if config.github.secret is None:
 	log.warning(f"No secret has been configured, anyone can post to your webhook!")
+
+def run_as_a_module():
+	logging.getLogger("hypercorn.error").setLevel(config.api.log_level)
+	logging.getLogger("hypercorn.access").setLevel(config.api.log_level)
+
+	class EndpointFilter(logging.Filter):
+		def filter(self, record: logging.LogRecord) -> bool:
+			return record.getMessage().find("GET /healthcheck ") == -1
+
+	# Filter out /healthcheck to not spam access log too much
+	logging.getLogger("hypercorn.access").addFilter(EndpointFilter())
+
+	corn_conf = Config()
+	corn_conf.bind = f"{config.api.address}:{config.api.port}"
+	corn_conf.certfile = config.api.fullchain
+	corn_conf.keyfile = config.api.privkey
+	corn_conf.loglevel = config.api.log_level
+	corn_conf.use_reloader = False
+	corn_conf.accesslog = '-'
+	corn_conf.logger_class = Logger
+	# Slight variation to the default format: https://pgjones.gitlab.io/hypercorn/how_to_guides/logging.html#configuring-access-logs
+	# As we need to account for our 'json formatter' not dealing with quotations.
+	corn_conf.access_log_format = '%(h)s %(l)s %(l)s %(t)s \\\\"%(r)s\\\\" %(s)s %(b)s \\\\"%(f)s\\\\" \\\\"%(a)s\\\\"'
+	corn_conf.errorlog = '-'
+
+	asyncio.run(serve(app, corn_conf))
 
 def verify_signature(payload :bytes, signature :str):
 	"""

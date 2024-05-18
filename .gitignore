@@ -2,3 +2,5 @@
 **/**.pyc
 **/**.pem
 **/**.toml
+**/**dist/
+**/**egg-info/

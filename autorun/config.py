@@ -79,6 +79,7 @@ class ApiConfig(pydantic.BaseModel):
 	privkey :pathlib.Path = os.environ.get('API_TLS_KEY', pathlib.Path('./privkey.pem').expanduser().absolute())
 	address :str = os.environ.get('API_BIND_ADDR', "127.0.0.1")
 	port :int = int(os.environ.get('API_BIND_PORT', "1337"))
+	log_level :str = os.environ.get('API_LOG_LEVEL', "INFO")
 
 	# .. todo::
 	#    Improve validators to also take into account if it's PEM format.
