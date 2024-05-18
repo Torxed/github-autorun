@@ -55,6 +55,7 @@ class GithubConfig(pydantic.BaseModel):
 			"X-GitHub-Api-Version": "2022-11-28"
 		}
 
+		# /repos/OWNER/REPO - https://docs.github.com/en/rest/repos/repos?apiVersion=2022-11-28#get-a-repository
 		request = urllib.request.Request(
 			f'https://api.github.com/repos/{self.repository}',
 			method="GET",
@@ -75,8 +76,8 @@ class ApiConfig(pydantic.BaseModel):
 	Controls the hypercorn stuff
 	"""
 
-	fullchain :pathlib.Path = os.environ.get('API_TLS_CERT', pathlib.Path('./fullchain.pem').expanduser().absolute())
-	privkey :pathlib.Path = os.environ.get('API_TLS_KEY', pathlib.Path('./privkey.pem').expanduser().absolute())
+	fullchain :pathlib.Path| None = os.environ.get('API_TLS_CERT', None)
+	privkey :pathlib.Path | None = os.environ.get('API_TLS_KEY', None)
 	address :str = os.environ.get('API_BIND_ADDR', "127.0.0.1")
 	port :int = int(os.environ.get('API_BIND_PORT', "1337"))
 	log_level :str = os.environ.get('API_LOG_LEVEL', "INFO")
@@ -86,6 +87,9 @@ class ApiConfig(pydantic.BaseModel):
 
 	@pydantic.field_validator("fullchain", mode='before')
 	def validate_fullchain(cls, value):
+		if value is None:
+			return value
+
 		if not isinstance(value, pathlib.Path):
 			value = pathlib.Path(value)
 
@@ -97,6 +101,9 @@ class ApiConfig(pydantic.BaseModel):
 
 	@pydantic.field_validator("privkey", mode='before')
 	def validate_privkey(cls, value):
+		if value is None:
+			return value
+
 		if not isinstance(value, pathlib.Path):
 			value = pathlib.Path(value)
 

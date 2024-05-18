@@ -56,8 +56,10 @@ def run_as_a_module():
 
 	corn_conf = Config()
 	corn_conf.bind = f"{config.api.address}:{config.api.port}"
-	corn_conf.certfile = config.api.fullchain
-	corn_conf.keyfile = config.api.privkey
+	if config.api.fullchain:
+		corn_conf.certfile = config.api.fullchain
+	if config.api.privkey:
+		corn_conf.keyfile = config.api.privkey
 	corn_conf.loglevel = config.api.log_level
 	corn_conf.use_reloader = False
 	corn_conf.accesslog = '-'
