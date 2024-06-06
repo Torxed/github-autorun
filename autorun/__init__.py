@@ -114,7 +114,7 @@ async def webhook_entry(payload :Ping|PullRequest|WorkflowJob, request :fastapi.
 	#    and only perform our checks if that is the case. As there is no way to force all runners to be approved.
 	#    Only outside collaborators - unless Workaround 3 is chosen: https://md.archlinux.org/s/aIL4kaCtY#workaround-3
 
-	log.info(f"Verifying that the PR \\\"{payload.pull_request.title}\\\" does not modify .github/workflows")
+	log.info(f"Verifying that the PR \\\"{payload.pull_request.title}\\\" does not modify any proected paths defined in the config.")
 
 	with tempfile.TemporaryDirectory() as tempdir:
 		# Clone the repo in question
@@ -134,23 +134,21 @@ async def webhook_entry(payload :Ping|PullRequest|WorkflowJob, request :fastapi.
 		log.debug(f"Files modified: {json.dumps(file_changes).replace('"', '\\"')}")
 
 		# Check if any file lives in .github/workflows
-		for filename in file_changes:
-			if filename == '': continue
+		if config.protected:
+			for filename in file_changes:
+				if filename == '': continue
 
-			try:
-				pathlib.Path(filename).relative_to(pathlib.Path('.github/workflows'))
-				# Not allowed to modify .github/workflow/* files
-				log.debug(f"Blocking runners in PR from executing, as they have modified .github/workflows")
+				for regex in config.protected:
+					if regex.search(filename) is not None:
+						log.debug(f"Blocking runners in PR from executing, as they have modified .github/workflows")
 
-				return fastapi.Response(
-					status_code=fastapi.status.HTTP_403_FORBIDDEN
-				)
-			except ValueError:
-				# This is good, it means the filename was not a relative path of .github/workflows/
-				continue
+						return fastapi.Response(
+							status_code=fastapi.status.HTTP_403_FORBIDDEN
+						)
 
-
-		log.info(f"PR did not modify workflows in .github/workflows - approving all runners associated with the PR")
+			log.info(f"PR did not modify any configured protected paths")
+		else:
+			log.warning(f"No paths are defined as proected in the configuration.")
 		
 		headers = {
 			"Accept": "application/vnd.github+json",
