@@ -5,6 +5,10 @@ repository = "Torxed/github-autorun"
 # to avoid anyone being able to post to your webhook.
 #
 #secret = "some-webhook-secret-you-created"
+protected = [
+	"\\.github/.*",
+	"tests/.*\\.py$"
+]
 
 [api]
 fullchain = "/etc/github-autorun/fullchain.pem"

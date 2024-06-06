@@ -7,6 +7,7 @@ except:
 	toml_mode = 'r'
 # Leaving for compability for a little longer
 import os
+import re
 import json
 import pathlib
 import pydantic
@@ -28,6 +29,7 @@ class GithubConfig(pydantic.BaseModel):
 	access_token :str = os.environ.get('GITHUB_API_TOKEN', None)
 	repository :str = os.environ.get('GITHUB_REPO', 'Torxed/github-autorun')
 	secret :str|None = os.environ.get('GITHUB_SECRET', None)
+	protected :typing.List[re.Pattern]|None = ["\\.github/.*", "tests/.*"]
 
 	@pydantic.field_validator("repository", mode='before')
 	def validate_repo(cls, value):
@@ -62,12 +64,18 @@ class GithubConfig(pydantic.BaseModel):
 			headers=headers
 		)
 		
-		with urllib.request.urlopen(request) as response:
-			info = response.info()
-			if info.get_content_subtype() == 'json':
-				repo_info = json.loads(response.read().decode(info.get_content_charset('utf-8')))
-				if repo_info.get('full_name', None) != self.repository:
-					raise PermissionError(f"Could not fetch configured repository info: {self.repository}")
+		try:
+			with urllib.request.urlopen(request) as response:
+				info = response.info()
+				if info.get_content_subtype() == 'json':
+					repo_info = json.loads(response.read().decode(info.get_content_charset('utf-8')))
+					if repo_info.get('full_name', None) != self.repository:
+						raise PermissionError(f"Could not fetch configured repository info: {self.repository}")
+		except urllib.error.HTTPError as error:
+			if error.code == 401:
+				raise PermissionError(f"Could not use configured access token, potentially it has expired.")
+
+			raise error
 
 		return self
 

@@ -334,10 +334,10 @@ class GithubJobs(pydantic.BaseModel):
 class JobStep(pydantic.BaseModel):
 	name :str
 	status :str
-	conclusion :str
 	number :int
-	started_at :datetime.datetime
-	completed_at :datetime.datetime
+	started_at :datetime.datetime|None = None
+	completed_at :datetime.datetime|None = None
+	conclusion :str|None = None
 
 class WorkflowJobInfo(pydantic.BaseModel):
 	id :int
@@ -351,14 +351,14 @@ class WorkflowJobInfo(pydantic.BaseModel):
 	url :str
 	html_url :str
 	status :str
-	conclusion :str
 	created_at :str
 	started_at :str
-	completed_at :str
 	name :str
 	steps :typing.List[JobStep]
 	check_run_url :str
 	labels :typing.List[str]
+	completed_at :str|None = None
+	conclusion :str|None = None
 	runner_name :str | None = None
 	runner_group_id :int | None = None
 	runner_group_name :str | None = None
