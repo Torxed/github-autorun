@@ -290,6 +290,25 @@ class HeadCommit(pydantic.BaseModel):
 	author :Author
 	committer :Author
 
+class RepoShort(pydantic.BaseModel):
+	id :int
+	url :str
+	name :str
+
+class Head(pydantic.BaseModel):
+	ref :str
+	sha :str
+	repo :Repository|RepoShort
+	label :str|None = None
+	user :UserInfo | None = None
+
+class PRInfo(pydantic.BaseModel):
+	url :str
+	id :int
+	number :int
+	head :Head
+	base :Head
+
 class GithubJobEntry(pydantic.BaseModel):
 	id :int
 	name :str
@@ -300,7 +319,6 @@ class GithubJobEntry(pydantic.BaseModel):
 	display_title :str
 	event :str
 	status :str
-	conclusion :str
 	check_suite_node_id :str
 	url :str
 	html_url :str
@@ -309,7 +327,7 @@ class GithubJobEntry(pydantic.BaseModel):
 	run_number :int
 	workflow_id :int
 	check_suite_id :int
-	pull_requests :list
+	pull_requests :typing.List[PRInfo]
 	actor :UserInfo
 	run_attempt :int
 	referenced_workflows :list
@@ -325,6 +343,7 @@ class GithubJobEntry(pydantic.BaseModel):
 	head_commit :HeadCommit
 	repository :RepoInfo
 	head_repository :RepoInfo
+	conclusion :str|None = None
 	previous_attempt_url :str|None = None
 
 class GithubJobs(pydantic.BaseModel):

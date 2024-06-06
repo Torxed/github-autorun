@@ -84,6 +84,36 @@ def verify_signature(payload :bytes, signature :str):
 
 	return False
 
+def list_pr_jobs(headers, payload):
+	# List all runners associated with the PR head sha sum
+	request = urllib.request.Request(
+		f'https://api.github.com/repos/{payload.pull_request.base.repo.full_name}/actions/runs?' \
+		+ f'event=pull_request' \
+		#+ f'&status=action_required' \
+		+ f'&head_sha={payload.pull_request.head.sha}',
+		method="GET",
+		headers=headers
+	)
+
+	# Iterate any job related to the PR
+	with urllib.request.urlopen(request) as response:
+		info = response.info()
+		if info.get_content_subtype() == 'json':
+			data = json.loads(response.read().decode(info.get_content_charset('utf-8')))
+			jobs = GithubJobs(**data)
+			for job in jobs.workflow_runs:
+				if job.head_commit.id != payload.pull_request.head.sha:
+					log.warning(f"Job {job.head_commit.id} does not match pull requests {payload.pull_request.head.sha}")
+
+					# Something's fishy, and we're out of chips!
+					return fastapi.Response(
+						status_code=fastapi.status.HTTP_403_FORBIDDEN
+					)
+
+				log.debug(f"Found job '{job.name}' related to Pull Requests {', '.join(['#'+str(pr.number) for pr in job.pull_requests])} called '{job.display_title}'")
+				yield job
+
+
 @app.post('/github/')
 async def webhook_entry(payload :Ping|PullRequest|WorkflowJob, request :fastapi.Request, response :fastapi.Response):
 	# We validate the webhook secret, only if we configured one
@@ -106,6 +136,13 @@ async def webhook_entry(payload :Ping|PullRequest|WorkflowJob, request :fastapi.
 			status_code=202
 		)
 
+	# Used to call the GitHub API during queries
+	headers = {
+		"Accept": "application/vnd.github+json",
+		"Authorization": f"Bearer {config.github.access_token}",
+		"X-GitHub-Api-Version": "2022-11-28"
+	}
+
 	# payload.head < PR reference
 	# payload.base < Target reference
 
@@ -114,7 +151,7 @@ async def webhook_entry(payload :Ping|PullRequest|WorkflowJob, request :fastapi.
 	#    and only perform our checks if that is the case. As there is no way to force all runners to be approved.
 	#    Only outside collaborators - unless Workaround 3 is chosen: https://md.archlinux.org/s/aIL4kaCtY#workaround-3
 
-	log.info(f"Verifying that the PR \\\"{payload.pull_request.title}\\\" does not modify any proected paths defined in the config.")
+	log.info(f"Verifying that the PR #{payload.pull_request.number} \\\"{payload.pull_request.title}\\\" does not modify any proected paths defined in the config.")
 
 	with tempfile.TemporaryDirectory() as tempdir:
 		# Clone the repo in question
@@ -134,68 +171,68 @@ async def webhook_entry(payload :Ping|PullRequest|WorkflowJob, request :fastapi.
 		log.debug(f"Files modified: {json.dumps(file_changes).replace('"', '\\"')}")
 
 		# Check if any file lives in .github/workflows
-		if config.protected:
+		if config.github.protected:
+			cancel_runners = False
 			for filename in file_changes:
 				if filename == '': continue
 
-				for regex in config.protected:
+				for regex in config.github.protected:
 					if regex.search(filename) is not None:
-						log.debug(f"Blocking runners in PR from executing, as they have modified .github/workflows")
+						cancel_runners = True
+						break
 
-						return fastapi.Response(
-							status_code=fastapi.status.HTTP_403_FORBIDDEN
+				if cancel_runners:
+					break
+
+			if cancel_runners:
+				log.warning(f"Cancelling runners in PR from executing, as they have modified proected file: {filename}")
+
+				for job in list_pr_jobs(headers, payload):
+					if job.status != 'completed':
+						log.info(f"Cancelling job '{job.name}'")
+						request = urllib.request.Request(
+							f'https://api.github.com/repos/{payload.pull_request.base.repo.full_name}/actions/runs/{job.id}/cancel',
+							method="POST",
+							headers=headers
 						)
+
+						with urllib.request.urlopen(request) as response:
+							info = response.info()
+							log.info(f"Canceled job '{job.name}'")
+
+					# Deleting jobs, will allow PR's to be merged as there will be
+					# no incomplete jobs blocking the merger. If that's what we want, uncomment this:
+
+					# request = urllib.request.Request(
+					# 	f'https://api.github.com/repos/{payload.pull_request.base.repo.full_name}/actions/runs/{job.id}',
+					# 	method="DELETE",
+					# 	headers=headers
+					# )
+
+					# with urllib.request.urlopen(request) as response:
+					# 	info = response.info()
+					# 	log.info(f"Deleted job '{job.name}'")
+
+				return fastapi.Response(
+					status_code=fastapi.status.HTTP_403_FORBIDDEN
+				)
 
 			log.info(f"PR did not modify any configured protected paths")
 		else:
 			log.warning(f"No paths are defined as proected in the configuration.")
-		
-		headers = {
-			"Accept": "application/vnd.github+json",
-			"Authorization": f"Bearer {config.github.access_token}",
-			"X-GitHub-Api-Version": "2022-11-28"
-		}
-
-		# List all runners associated with the PR head sha sum
-		request = urllib.request.Request(
-			f'https://api.github.com/repos/{payload.pull_request.base.repo.full_name}/actions/runs?' \
-			+ f'event=pull_request' \
-			+ f'&status=action_required' \
-			+ f'&head_sha={payload.pull_request.head.sha}',
-			method="GET",
-			headers=headers
-		)
-
-		# Queue them, and if anything stands out, abort!
-		jobs_to_start = {}
-		with urllib.request.urlopen(request) as response:
-			info = response.info()
-			if info.get_content_subtype() == 'json':
-				jobs = GithubJobs(**json.loads(response.read().decode(info.get_content_charset('utf-8'))))
-				for job in jobs.workflow_runs:
-					if job.head_commit.id != payload.pull_request.head.sha:
-						log.warning(f"Job {job.head_commit.id} does not match pull requests {payload.pull_request.head.sha}")
-
-						# Something's fishy, and we're out of chips!
-						return fastapi.Response(
-							status_code=fastapi.status.HTTP_403_FORBIDDEN
-						)
-
-					log.info(f"Quing '{job.name}' for start")
-					jobs_to_start[job.id] = job
 
 		# All should be good here,
 		# lets approve the individual runners (I don't think there's a batch approval?)
-		for id_number, job in jobs_to_start.items():
+		for job in list_pr_jobs(headers, payload):
 			request = urllib.request.Request(
-				f'https://api.github.com/repos/{payload.pull_request.base.repo.full_name}/actions/runs/{id_number}/approve',
+				f'https://api.github.com/repos/{payload.pull_request.base.repo.full_name}/actions/runs/{job.id}/approve',
 				method="POST",
 				headers=headers
 			)
 
 			with urllib.request.urlopen(request) as response:
 				info = response.info()
-				log.info(f"Started '{job.name}' for start")
+				log.info(f"Started job '{job.name}'")
 
 	# If everything went according to plan, then we
 	# return '202 Accepted' to the webhook caller (has little effect, but is good practice)
