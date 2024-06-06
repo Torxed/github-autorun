@@ -2,6 +2,7 @@ import enum
 import pydantic
 import typing
 import datetime
+import string
 
 """
 The three main models:
@@ -48,6 +49,19 @@ class Hook(pydantic.BaseModel):
 	deliveries_url :str
 	last_response :LastResponse
 
+	@pydantic.field_validator("name", mode='before')
+	def validate_name(cls, value):
+		if set(value) - set(string.ascii_letters + string.digits + '-_./ ()'):
+			# Technically, there are other characters than those above
+			# that are valid for hook names. But for our purposes these are the ones we should encouter.
+			raise ValueError(f"hook name {value} is not a valid name")
+		if '..' in value:
+			raise ValueError(f"hook name {value} is not a valid name")
+		if '"' in value:
+			raise ValueError(f"hook name {value} is not a valid name")
+
+		return value
+
 class UserInfo(pydantic.BaseModel):
 	login :str
 	id :int
@@ -67,6 +81,17 @@ class UserInfo(pydantic.BaseModel):
 	received_events_url :str
 	type :str
 	site_admin :bool
+
+	@pydantic.field_validator("html_url", mode='before')
+	def validate_html_url(cls, value):
+		if not value.startswith('https://'):
+			raise ValueError(f"Invalid URL format: {value}")
+		if '..' in value:
+			raise ValueError(f"URL {value} must not contain double dots")
+		if '"' in value:
+			raise ValueError(f"URL {value} must not contain quotations")
+
+		return value
 
 class Repository(pydantic.BaseModel):
 	id :int
@@ -156,6 +181,30 @@ class Repository(pydantic.BaseModel):
 	default_branch :str
 	mirror_url :str|None = None
 
+	@pydantic.field_validator("html_url", mode='before')
+	def validate_html_url(cls, value):
+		if not value.startswith('https://'):
+			raise ValueError(f"Invalid URL format: {value}")
+		if '..' in value:
+			raise ValueError(f"URL {value} must not contain double dots")
+		if '"' in value:
+			raise ValueError(f"URL {value} must not contain quotations")
+
+		return value
+
+	@pydantic.field_validator("name", "full_name", mode='before')
+	def validate_name(cls, value):
+		if set(value) - set(string.ascii_letters + string.digits + '-_./ ()'):
+			# Technically, there are other characters than those above
+			# that are valid for repository names. But for our purposes these are the ones we should encouter.
+			raise ValueError(f"repository name {value} is not a valid name")
+		if '..' in value:
+			raise ValueError(f"repository name {value} is not a valid name")
+		if '"' in value:
+			raise ValueError(f"repository name {value} is not a valid name")
+
+		return value
+
 class RepoInfo(pydantic.BaseModel):
 	id :int
 	node_id :str
@@ -204,12 +253,64 @@ class RepoInfo(pydantic.BaseModel):
 	releases_url :str
 	deployments_url :str
 
+	@pydantic.field_validator("html_url", mode='before')
+	def validate_html_url(cls, value):
+		if not value.startswith('https://'):
+			raise ValueError(f"Invalid URL format: {value}")
+		if '..' in value:
+			raise ValueError(f"URL {value} must not contain double dots")
+		if '"' in value:
+			raise ValueError(f"URL {value} must not contain quotations")
+
+		return value
+
+	@pydantic.field_validator("name", "full_name", mode='before')
+	def validate_name(cls, value):
+		if set(value) - set(string.ascii_letters + string.digits + '-_./ ()'):
+			# Technically, there are other characters than those above
+			# that are valid for repository names. But for our purposes these are the ones we should encouter.
+			raise ValueError(f"repository name {value} is not a valid name")
+		if '..' in value:
+			raise ValueError(f"repository name {value} is not a valid name")
+		if '"' in value:
+			raise ValueError(f"repository name {value} is not a valid name")
+
+		return value
+
+
+class RepoShort(pydantic.BaseModel):
+	id :int
+	url :str
+	name :str
+
+	@pydantic.field_validator("name", mode='before')
+	def validate_name(cls, value):
+		if set(value) - set(string.ascii_letters + string.digits + '-_./ ()'):
+			# Technically, there are other characters than those above
+			# that are valid for repository names. But for our purposes these are the ones we should encouter.
+			raise ValueError(f"repository name {value} is not a valid name")
+		if '..' in value:
+			raise ValueError(f"repository name {value} is not a valid name")
+		if '"' in value:
+			raise ValueError(f"repository name {value} is not a valid name")
+
+		return value
+
+
 class Head(pydantic.BaseModel):
-	label :str
 	ref :str
 	sha :str
-	user :UserInfo
-	repo :Repository
+	repo :Repository|RepoShort
+	label :str|None = None
+	user :UserInfo | None = None
+
+	@pydantic.field_validator("ref", mode='before')
+	def validate_ref(cls, value):
+		if set(value) - set(string.ascii_letters + string.digits + '-_/@'):
+			# Technically, there are other characters than those above
+			# that are valid. But for our purposes these are the ones we should encouter.
+			raise ValueError(f"ref value {value} is not a valid git ref format - https://www.git-scm.com/docs/git-check-ref-format")
+		return value
 
 
 class PullRequestInfo(pydantic.BaseModel):
@@ -260,7 +361,18 @@ class PullRequestInfo(pydantic.BaseModel):
 	closed_at :datetime.datetime|None = None
 	merged_at :datetime.datetime|None = None
 	assignee :str|None = None
-	milestone :str|None = None 
+	milestone :str|None = None
+
+	@pydantic.field_validator("html_url", mode='before')
+	def validate_html_url(cls, value):
+		if not value.startswith('https://'):
+			raise ValueError(f"Invalid URL format: {value}")
+		if '..' in value:
+			raise ValueError(f"URL {value} must not contain double dots")
+		if '"' in value:
+			raise ValueError(f"URL {value} must not contain quotations")
+
+		return value
 
 class Ping(pydantic.BaseModel):
 	hook_id :int
@@ -289,18 +401,6 @@ class HeadCommit(pydantic.BaseModel):
 	timestamp :datetime.datetime
 	author :Author
 	committer :Author
-
-class RepoShort(pydantic.BaseModel):
-	id :int
-	url :str
-	name :str
-
-class Head(pydantic.BaseModel):
-	ref :str
-	sha :str
-	repo :Repository|RepoShort
-	label :str|None = None
-	user :UserInfo | None = None
 
 class PRInfo(pydantic.BaseModel):
 	url :str
@@ -346,6 +446,30 @@ class GithubJobEntry(pydantic.BaseModel):
 	conclusion :str|None = None
 	previous_attempt_url :str|None = None
 
+	@pydantic.field_validator("html_url", mode='before')
+	def validate_html_url(cls, value):
+		if not value.startswith('https://'):
+			raise ValueError(f"Invalid URL format: {value}")
+		if '..' in value:
+			raise ValueError(f"URL {value} must not contain double dots")
+		if '"' in value:
+			raise ValueError(f"URL {value} must not contain quotations")
+
+		return value
+
+	@pydantic.field_validator("name", mode='before')
+	def validate_name(cls, value):
+		if set(value) - set(string.ascii_letters + string.digits + '-_./ ()'):
+			# Technically, there are other characters than those above
+			# that are valid for job names. But for our purposes these are the ones we should encouter.
+			raise ValueError(f"job name {value} is not a valid name")
+		if '..' in value:
+			raise ValueError(f"job name {value} is not a valid name")
+		if '"' in value:
+			raise ValueError(f"job name {value} is not a valid name")
+
+		return value
+
 class GithubJobs(pydantic.BaseModel):
 	total_count :int
 	workflow_runs :typing.List[GithubJobEntry]
@@ -357,6 +481,19 @@ class JobStep(pydantic.BaseModel):
 	started_at :datetime.datetime|None = None
 	completed_at :datetime.datetime|None = None
 	conclusion :str|None = None
+
+	@pydantic.field_validator("name", mode='before')
+	def validate_name(cls, value):
+		if set(value) - set(string.ascii_letters + string.digits + '-_./ ()'):
+			# Technically, there are other characters than those above
+			# that are valid for job step names. But for our purposes these are the ones we should encouter.
+			raise ValueError(f"job step name {value} is not a valid name")
+		if '..' in value:
+			raise ValueError(f"job step name {value} is not a valid name")
+		if '"' in value:
+			raise ValueError(f"job step name {value} is not a valid name")
+
+		return value
 
 class WorkflowJobInfo(pydantic.BaseModel):
 	id :int
@@ -382,6 +519,30 @@ class WorkflowJobInfo(pydantic.BaseModel):
 	runner_group_id :int | None = None
 	runner_group_name :str | None = None
 	runner_id :int | None = None
+
+	@pydantic.field_validator("html_url", mode='before')
+	def validate_html_url(cls, value):
+		if not value.startswith('https://'):
+			raise ValueError(f"Invalid URL format: {value}")
+		if '..' in value:
+			raise ValueError(f"URL {value} must not contain double dots")
+		if '"' in value:
+			raise ValueError(f"URL {value} must not contain quotations")
+
+		return value
+
+	@pydantic.field_validator("name", "workflow_name", mode='before')
+	def validate_name(cls, value):
+		if set(value) - set(string.ascii_letters + string.digits + '-_./ ()'):
+			# Technically, there are other characters than those above
+			# that are valid for job names. But for our purposes these are the ones we should encouter.
+			raise ValueError(f"job name {value} is not a valid name")
+		if '..' in value:
+			raise ValueError(f"job name {value} is not a valid name")
+		if '"' in value:
+			raise ValueError(f"job name {value} is not a valid name")
+
+		return value
 
 class WorkflowJob(pydantic.BaseModel):
 	action :str

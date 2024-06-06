@@ -156,18 +156,18 @@ async def webhook_entry(payload :Ping|PullRequest|WorkflowJob, request :fastapi.
 	with tempfile.TemporaryDirectory() as tempdir:
 		# Clone the repo in question
 		log.debug(f"git clone {payload.pull_request.base.repo.html_url}@{payload.pull_request.base.ref}")
-		subprocess.run(f"git clone -q {payload.pull_request.base.repo.html_url} --branch {payload.pull_request.base.ref} --single-branch {tempdir}/{payload.pull_request.base.repo.name}", capture_output=True, shell=True, cwd=tempdir)
+		subprocess.run(f"git clone -q --branch \"{payload.pull_request.base.ref}\" --single-branch -- \"{payload.pull_request.base.repo.html_url}\" \"{tempdir}/{payload.pull_request.base.repo.name}\"", capture_output=True, shell=True, cwd=tempdir)
 
 		# Add the PR repo/branch
 		log.debug(f"git remote add \\\"pr\\\" {payload.pull_request.head.repo.full_name}@{payload.pull_request.head.ref}")
-		subprocess.run(f"git remote add pr {payload.pull_request.head.repo.html_url}", capture_output=True, shell=True, cwd=f"{tempdir}/{payload.pull_request.base.repo.name}")
+		subprocess.run(f"git remote add pr -- \"{payload.pull_request.head.repo.html_url}\"", capture_output=True, shell=True, cwd=f"{tempdir}/{payload.pull_request.base.repo.name}")
 
 		# Update all the remotes (repo + pr)
 		log.debug(f"git remote update {payload.pull_request.base.repo.full_name}@{payload.pull_request.base.ref} and {payload.pull_request.head.repo.full_name}@{payload.pull_request.head.ref}")
 		subprocess.run(f"git remote update", capture_output=True, shell=True, cwd=f"{tempdir}/{payload.pull_request.base.repo.name}")
 
 		# git diff - files
-		file_changes = subprocess.run(f"git diff --name-only {payload.pull_request.base.ref} pr/{payload.pull_request.head.ref}", capture_output=True, shell=True, cwd=f"{tempdir}/{payload.pull_request.base.repo.name}").stdout.decode().strip().split('\n')
+		file_changes = subprocess.run(f"git diff --name-only -- \"{payload.pull_request.base.ref}\" \"pr/{payload.pull_request.head.ref}\"", capture_output=True, shell=True, cwd=f"{tempdir}/{payload.pull_request.base.repo.name}").stdout.decode().strip().split('\n')
 		log.debug(f"Files modified: {json.dumps(file_changes).replace('"', '\\"')}")
 
 		# Check if any file lives in .github/workflows
@@ -224,15 +224,16 @@ async def webhook_entry(payload :Ping|PullRequest|WorkflowJob, request :fastapi.
 		# All should be good here,
 		# lets approve the individual runners (I don't think there's a batch approval?)
 		for job in list_pr_jobs(headers, payload):
-			request = urllib.request.Request(
-				f'https://api.github.com/repos/{payload.pull_request.base.repo.full_name}/actions/runs/{job.id}/approve',
-				method="POST",
-				headers=headers
-			)
+			if job.status != 'completed':
+				request = urllib.request.Request(
+					f'https://api.github.com/repos/{payload.pull_request.base.repo.full_name}/actions/runs/{job.id}/approve',
+					method="POST",
+					headers=headers
+				)
 
-			with urllib.request.urlopen(request) as response:
-				info = response.info()
-				log.info(f"Started job '{job.name}'")
+				with urllib.request.urlopen(request) as response:
+					info = response.info()
+					log.info(f"Started job '{job.name}'")
 
 	# If everything went according to plan, then we
 	# return '202 Accepted' to the webhook caller (has little effect, but is good practice)
